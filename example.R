@@ -9,8 +9,8 @@ scriptDir <- dirname(sys.frame(1)$ofile)
 # Construct the path to another script in the same directory (or a subdirectory)
 libPath <- file.path(scriptDir, "libexample.so")
 dyn.load(libPath)
-des <- function(popSize, dim) {
-      return(.Call("des", popSize, dim))
+des <- function(dimension, maxGenerations) {
+      return(.Call("des", dimension, maxGenerations))
 
 }
 
