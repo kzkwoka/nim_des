@@ -5,4 +5,7 @@ htmldocs/
 #Additional libraries
 rnim/
 cec2017/
+cec/
+CEC17_fast_pow/
+codes/
 *.so

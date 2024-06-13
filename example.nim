@@ -5,11 +5,17 @@ import sequtils
 import std/algorithm
 
 
-{.compile: "cec2017/src/cec17_test_func.c".}
+# {.compile: "cec2017/src/cec2017.c".}
+{.compile: "cec/cec2017nim.c".}
+{.compile: "cec/src/affine_trans.c".}
+{.compile: "cec/src/basic_funcs.c".}
+{.compile: "cec/src/cec.c".}
+{.compile: "cec/src/complex_funcs.c".}
+{.compile: "cec/src/hybrid_funcs.c".}
+{.compile: "cec/src/interfaces.c".}
+{.compile: "cec/src/utils.c".}
 
-#TODO: check types to be compatible with c interface
-proc cec2017(double *x, double *f, int nx, int mx,int func_num): void{.importc: "cec17_test_func".}
-
+proc cec2017(nx: cint, fn: cint, input: ptr): cdouble {.importc: "cec2017".}
 
 
 type
@@ -26,8 +32,17 @@ const
 proc objectiveFunction(individual: Individual): float =
 # Implementacja funkcji celu, np. Sphere Function
   result = 0.0
-  for x in individual:
-    result += x * x
+  let fn = cint(1)
+  let nx = cint(individual.len)
+  var input: ptr UncheckedArray[cdouble] = cast[ptr UncheckedArray[cdouble]](alloc0(individual.len * sizeof(cdouble)))
+  for i in 0..<individual.len:
+    input[i] = individual[i]
+  result = cec2017(nx, fn, input)
+  # result = float(result)
+  dealloc(input)
+    # result = 0.0
+  # for x in individual:
+  #   result += x * x
 
 proc initializePopulation(populationSize, dimension: int): Population =
   result = newSeq[Individual](populationSize)
@@ -99,14 +114,6 @@ proc differentialEvolutionStrategy(dimension, maxGenerations: int): Individual =
 
   return population[0]
 
-
-# proc des*(popSize, dim: SEXP): SEXP {.exportR.} =
-#   let
-#     popSize = popSize.to(int)
-#     dim = dim.to(int)
-#   result = nimToR(desRun(popSize, dim))
-
-
 proc des*(dimension, maxGenerations: SEXP): SEXP {.exportR.} =
   let
     dimension = dimension.to(int)
@@ -115,9 +122,16 @@ proc des*(dimension, maxGenerations: SEXP): SEXP {.exportR.} =
 
 when isMainModule:
   let dimension = 10
-  let maxGenerations = 1000
+  let maxGenerations = 10000
   let bestIndividual = differentialEvolutionStrategy(dimension, maxGenerations)
   echo "Best individual: ", bestIndividual
   echo "Best fitness: ", objectiveFunction(bestIndividual)
+  
+  # let i = 1
+  # let x = @[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+  # let result = objectiveFunction(x)
+  # echo result
+  # let result2 = objectiveFunction(x)
+  # echo result2
 
 
