@@ -15,11 +15,10 @@ import std/algorithm
 {.compile: "cec/src/interfaces.c".}
 {.compile: "cec/src/utils.c".}
 
-proc cec2017(nx: cint, fn: cint, input: ptr): cdouble {.importc: "cec2017".}
-
+# proc cec2017(nx: cint, fn: cint, input: ptr): cdouble {.importc: "cec2017".}
+proc cec2017(nx: cint, fn: cint, input: ptr cdouble): cdouble {.importc: "cec2017".}
 
 type
-  # Individual = array[1000, float]
   Individual = seq[float]
   Population = seq[Individual]
 
@@ -30,24 +29,19 @@ const
   epsilon = 0.001
 
 proc objectiveFunction(individual: Individual, fn_i: int): float =
-# Implementacja funkcji celu, np. Sphere Function
   result = 0.0
   let fn = cint(fn_i)
   let nx = cint(individual.len)
-  var input: ptr UncheckedArray[cdouble] = cast[ptr UncheckedArray[cdouble]](alloc0(individual.len * sizeof(cdouble)))
+  var input: seq[cdouble] = newSeq[cdouble](individual.len)
   for i in 0..<individual.len:
     input[i] = individual[i]
-  result = cec2017(nx, fn, input)
+  result = cec2017(nx, fn, addr(input[0]))  # Pass the address of the first element
   # result = float(result)
-  dealloc(input)
-    # result = 0.0
-  # for x in individual:
-  #   result += x * x
 
 proc initializePopulation(populationSize, dimension: int): Population =
   result = newSeq[Individual](populationSize)
   for i in 0..<populationSize:
-    result[i] = newSeqWith(dimension, rand(1.0))
+    result[i] = newSeqWith(dimension, rand(-100.0..100.0))
 
 proc calculateCenter(population: Population, size: int): Individual =
   let dimension = population[0].len
@@ -70,11 +64,9 @@ proc calculateShift(previousShift, s, m: Individual): Individual =
     result[j] = (1.0 - c) * previousShift[j] + c * (s[j] - m[j])
 
 proc randomNormal(mu, sigma: float): float =
-  # Implementacja generowania liczby z rozkładu normalnego
   let u1 = rand(1.0)
   let u2 = rand(1.0)
-  result = sqrt(-2.0 * log(u1, 10)) * cos(2.0 * PI * u2) * sigma + mu
-#TODO: check podstawe algorytmu
+  result = sqrt(-2.0 * ln(u1)) * cos(2.0 * PI * u2) * sigma + mu  # Adjusted log base to natural
 
 proc generateNewIndividual(s, shift: Individual, dimension: int): Individual =
   result = newSeqWith(dimension, 0.0)
@@ -107,7 +99,7 @@ proc differentialEvolutionStrategy(dimension, fn_i, maxGenerations: int): Indivi
     var stdDev = newSeqWith(dimension, 0.0)
     for j in 0..<dimension:
       for i in 0..<populationSize:
-        stdDev[j] += pow((population[i][j] - s[j]),2)
+        stdDev[j] += pow((population[i][j] - s[j]), 2)
       stdDev[j] = sqrt(stdDev[j] / float(populationSize - 1))
     if stdDev.allIt(it < epsilon):
       break
@@ -122,7 +114,7 @@ proc des*(dimension, fn_i, maxGenerations: SEXP): SEXP {.exportR.} =
   result = nimToR(differentialEvolutionStrategy(dimension, fn_i, maxGenerations))
 
 when isMainModule:
-  let dimension = 10
+  let dimension = 2
   let maxGenerations = 10000
   let bestIndividual = differentialEvolutionStrategy(dimension, 1, maxGenerations)
   echo "Best individual: ", bestIndividual
