@@ -29,10 +29,10 @@ const
   delta = 0.01
   epsilon = 0.001
 
-proc objectiveFunction(individual: Individual): float =
+proc objectiveFunction(individual: Individual, fn_i: int): float =
 # Implementacja funkcji celu, np. Sphere Function
   result = 0.0
-  let fn = cint(1)
+  let fn = cint(fn_i)
   let nx = cint(individual.len)
   var input: ptr UncheckedArray[cdouble] = cast[ptr UncheckedArray[cdouble]](alloc0(individual.len * sizeof(cdouble)))
   for i in 0..<individual.len:
@@ -58,9 +58,9 @@ proc calculateCenter(population: Population, size: int): Individual =
   for j in 0..<dimension:
     result[j] /= float(size)
 
-proc sortPopulationByFitness(population: var Population) =
+proc sortPopulationByFitness(population: var Population, fn_i: int) =
   population.sort(proc (a, b: Individual): int =
-    cmp(objectiveFunction(a), objectiveFunction(b))
+    cmp(objectiveFunction(a, fn_i), objectiveFunction(b, fn_i))
   )
 
 proc calculateShift(previousShift, s, m: Individual): Individual =
@@ -81,7 +81,7 @@ proc generateNewIndividual(s, shift: Individual, dimension: int): Individual =
   for j in 0..<dimension:
     result[j] = s[j] + shift[j] + epsilon * randomNormal(0.0, 1.0)
 
-proc differentialEvolutionStrategy(dimension, maxGenerations: int): Individual =
+proc differentialEvolutionStrategy(dimension, fn_i, maxGenerations: int): Individual =
   let populationSize = 4 * dimension
   let mu = populationSize div 2
   var population = initializePopulation(populationSize, dimension)
@@ -89,7 +89,7 @@ proc differentialEvolutionStrategy(dimension, maxGenerations: int): Individual =
 
   for generation in 0..<maxGenerations:
     let m = calculateCenter(population, populationSize)
-    sortPopulationByFitness(population)
+    sortPopulationByFitness(population, fn_i)
     let s = calculateCenter(population, mu)
     shift = calculateShift(shift, s, m)
 
@@ -114,18 +114,19 @@ proc differentialEvolutionStrategy(dimension, maxGenerations: int): Individual =
 
   return population[0]
 
-proc des*(dimension, maxGenerations: SEXP): SEXP {.exportR.} =
+proc des*(dimension, fn_i, maxGenerations: SEXP): SEXP {.exportR.} =
   let
     dimension = dimension.to(int)
     maxGenerations = maxGenerations.to(int)
-  result = nimToR(differentialEvolutionStrategy(dimension, maxGenerations))
+    fn_i = fn_i.to(int)
+  result = nimToR(differentialEvolutionStrategy(dimension, fn_i, maxGenerations))
 
 when isMainModule:
   let dimension = 10
   let maxGenerations = 10000
-  let bestIndividual = differentialEvolutionStrategy(dimension, maxGenerations)
+  let bestIndividual = differentialEvolutionStrategy(dimension, 1, maxGenerations)
   echo "Best individual: ", bestIndividual
-  echo "Best fitness: ", objectiveFunction(bestIndividual)
+  echo "Best fitness: ", objectiveFunction(bestIndividual, 1)
   
   # let i = 1
   # let x = @[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
