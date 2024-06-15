@@ -28,14 +28,28 @@ const
   delta = 0.01
   epsilon = 0.001
 
+var maxValue = -Inf
+var bestValue = Inf
+
 proc objectiveFunction(individual: Individual, fn_i: int): float =
   result = 0.0
-  let fn = cint(fn_i)
-  let nx = cint(individual.len)
-  var input: seq[cdouble] = newSeq[cdouble](individual.len)
-  for i in 0..<individual.len:
-    input[i] = individual[i]
-  result = cec2017(nx, fn, addr(input[0]))  # Pass the address of the first element
+  if (individual.allIt(it < 100)) and (individual.allIt(it > -100)):
+    let fn = cint(fn_i)
+    let nx = cint(individual.len)
+    var input: seq[cdouble] = newSeq[cdouble](individual.len)
+    for i in 0..<individual.len:
+      input[i] = individual[i]
+    result = cec2017(nx, fn, addr(input[0]))  # Pass the address of the first element
+    maxValue = max(maxValue, result)
+    bestValue = min(bestValue, result)
+  else:
+    var sumSquares = 0.0
+    for x in individual:
+      if x > 100:
+        sumSquares += (x - 100) ^ 2
+      if x < -100:
+        sumSquares += (100 - x) ^ 2
+    result = maxValue + sumSquares
   # result = float(result)
 
 proc initializePopulation(populationSize, dimension: int): Population =
@@ -80,6 +94,7 @@ proc differentialEvolutionStrategy(dimension, fn_i, maxGenerations: int): Indivi
   var shift = newSeqWith(dimension, 0.0)
 
   for generation in 0..<maxGenerations:
+    maxValue = -Inf
     let m = calculateCenter(population, populationSize)
     sortPopulationByFitness(population, fn_i)
     let s = calculateCenter(population, mu)
@@ -101,8 +116,11 @@ proc differentialEvolutionStrategy(dimension, fn_i, maxGenerations: int): Indivi
       for i in 0..<populationSize:
         stdDev[j] += pow((population[i][j] - s[j]), 2)
       stdDev[j] = sqrt(stdDev[j] / float(populationSize - 1))
-    if stdDev.allIt(it < epsilon):
+    var err = sum(stdDev) * 0.5
+    if err < epsilon:
       break
+    # if stdDev.allIt(it < epsilon):
+    #   break
 
   return population[0]
 
@@ -122,9 +140,9 @@ when isMainModule:
   
   # let i = 1
   # let x = @[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
-  # let result = objectiveFunction(x)
+  # let result = objectiveFunction(x, i)
   # echo result
-  # let result2 = objectiveFunction(x)
+  # let result2 = objectiveFunction(x, i)
   # echo result2
 
 
