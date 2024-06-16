@@ -4,8 +4,6 @@ import random
 import sequtils
 import std/algorithm
 
-
-# {.compile: "cec2017/src/cec2017.c".}
 {.compile: "cec/cec2017nim.c".}
 {.compile: "cec/src/affine_trans.c".}
 {.compile: "cec/src/basic_funcs.c".}
@@ -15,7 +13,7 @@ import std/algorithm
 {.compile: "cec/src/interfaces.c".}
 {.compile: "cec/src/utils.c".}
 
-proc cec2017(nx: cint, fn: cint, input: ptr cdouble): cdouble {.importc: "cec2017".}
+proc cec2017(nx: cint, fn: cint, input: ptr): cdouble {.importc: "cec2017".}
 
 type
   Individual = seq[float]
@@ -24,13 +22,14 @@ type
 
 const
   F = sqrt(1.0 / 2.0)
-  c = 0.5#0.1
-  delta = 1.25#0.01
-  epsilon = pow(10.0,-8.0)/delta#0.001
 
-var qmax = -Inf  
-var bestValue = Inf
-var bestIndividual: seq[float] = @[]
+var
+  c = 0.1
+  delta = 0.01
+  epsilon = 0.001
+  qmax = -Inf  
+  bestValue = Inf
+  bestIndividual: seq[float] = @[]
 
 proc objectiveFunction(individual: Individual, fn_i: int, lower, upper: Individual): float =
   result = 0.0
@@ -53,7 +52,6 @@ proc objectiveFunction(individual: Individual, fn_i: int, lower, upper: Individu
       if x < -100:
         sumSquares += (-100 - x) ^ 2
     result = qmax + sumSquares
-  # result = float(result)
 
 proc initializePopulation(populationSize, dimension: int): Population =
   result = newSeq[Individual](populationSize)
@@ -80,38 +78,48 @@ proc calculateShift(previousShift, s, m: Individual): Individual =
   for j in 0..<dimension:
     result[j] = (1.0 - c) * previousShift[j] + c * (s[j] - m[j])
 
-# proc randomNormal(mu, sigma: float): float =
-#   let u1 = rand(1.0)
-#   let u2 = rand(1.0)
-#   result = sqrt(-2.0 * ln(u1)) * cos(2.0 * PI * u2) * sigma + mu
-
 proc generateNewIndividual(s, shift: Individual, dimension: int): Individual =
   result = newSeqWith(dimension, 0.0)
   for j in 0..<dimension:
     result[j] = s[j] + shift[j] + epsilon * gauss(0.0, 1.0)
 
-# proc handleBoundaryConstraints(x: Individual, lowerBound, upperBound: Individual): Individual =
-  # let dimension = x.len
-  # result = newSeqWith(dimension, 0.0)
-  # for i in 0..<dimension:
-  #   if x[i] > upperBound[i]:
-  #     result[i] = upperBound[i]
-  #   elif x[i] < lowerBound[i]:
-  #     result[i] = lowerBound[i]
-  #   else:
-  #     result[i] = x[i]
-
 proc selectFromHistory(history: History, size, mu: int): Population =
   result = newSeq[Individual](size)
   for i in 0..<size:
     let histIndex = rand(history.len - 1)
-    # let popIndex = rand(history[histIndex].len - 1)
     let popIndex = rand(mu)
     result[i] = history[histIndex][popIndex]
+
+proc expectedValueNorm(n: int): float =
+  let
+    numerator = sqrt(2.0) * gamma((float(n) + 1) / 2)
+    denominator = gamma(float(n) / 2)
+  result = numerator / denominator
+
+proc generateNewPopulation(history: History, populationSize, mu, dimension: int, shift: seq, s:Individual): Population = 
+  var newPopulation = newSeq[Individual](populationSize)
+  for i in 0..<populationSize:
+    let selectedIndividuals = selectFromHistory(history, 2, mu)
+    let a = selectedIndividuals[0]
+    let b = selectedIndividuals[1]
+    var d = newSeqWith(dimension, 0.0)
+    for j in 0..<dimension:
+      d[j] = F * (a[j] - b[j]) + shift[j] * delta * gauss(0.0, 1.0)
+    var newIndividual = generateNewIndividual(s, d, dimension)
+    newPopulation[i] = newIndividual
+  result = newPopulation
 
 proc differentialEvolutionStrategy(dimension, fn_i, maxGenerations: int): Individual =
   let populationSize = 4 * dimension
   let mu = populationSize div 2
+  let H = (6 + 3 * sqrt(float(dimension)).int)
+  c = 4/(dimension+4)
+  delta = expectedValueNorm(dimension)
+  epsilon = 1e-8/delta
+  qmax = -Inf  
+  bestValue = Inf
+  bestIndividual = @[]
+
   var population = initializePopulation(populationSize, dimension)
   var shift = newSeqWith(dimension, 0.0)
   var history: History = newSeq[Population]()
@@ -122,61 +130,62 @@ proc differentialEvolutionStrategy(dimension, fn_i, maxGenerations: int): Indivi
   history.add(population)
   for generation in 0..<maxGenerations:
     qmax = -Inf
+
     let m = calculateCenter(population, populationSize)
     sortPopulationByFitness(population, fn_i, lowerBound, upperBound)
     let s = calculateCenter(population, mu)
     shift = calculateShift(shift, s, m)
 
-    var newPopulation = newSeq[Individual](populationSize)
-    for i in 0..<populationSize:
-      let selectedIndividuals = selectFromHistory(history, 2, mu)
-      let a = selectedIndividuals[0]
-      let b = selectedIndividuals[1]
-      var d = newSeqWith(dimension, 0.0)
-      for j in 0..<dimension:
-        d[j] = F * (a[j] - b[j]) + shift[j] * delta * gauss(0.0, 1.0)
-      var newIndividual = generateNewIndividual(s, d, dimension)
-      newPopulation[i] = newIndividual
-    population = newPopulation
+    population = generateNewPopulation(history, populationSize, mu, dimension, shift, s)
 
-    # Update history
     history.add(population)
-    if history.len > (6 + 3 * sqrt(float(dimension)).int):
-      history.del(0)  # Maintain the history size as per the requirement
+    if history.len > H:
+      history.del(0)
 
-    # Convergence condition
     var stdDev = newSeqWith(dimension, 0.0)
     for j in 0..<dimension:
       for i in 0..<populationSize:
         stdDev[j] += pow((population[i][j] - previousMean[j]), 2)
       stdDev[j] = sqrt(stdDev[j] / float(populationSize - 1))
+    
     previousMean = s
+
     var err = sum(stdDev) * 0.5
     if err < epsilon:
       break
     
   return bestIndividual
 
-proc des*(dimension, fn_i, maxGenerations: SEXP): SEXP {.exportR.} =
+proc des*(dimension, fn_i, maxGenerations, seed: SEXP): SEXP {.exportR.} =
   let
     dimension = dimension.to(int)
     maxGenerations = maxGenerations.to(int)
     fn_i = fn_i.to(int)
+    seed = seed.to(int)
+  randomize(seed)
   result = nimToR(differentialEvolutionStrategy(dimension, fn_i, maxGenerations))
 
 when isMainModule:
   let dimension = 2
   let maxGenerations = 2222
-  let fn = 9
-  let bestInd = differentialEvolutionStrategy(dimension, fn, maxGenerations)
-  let lowerBound = newSeqWith(dimension, -100.0)
-  let upperBound = newSeqWith(dimension, 100.0)
+  var fn = 9
+  echo fn
+  var bestInd = differentialEvolutionStrategy(dimension, fn, maxGenerations)
+  var lowerBound = newSeqWith(dimension, -100.0)
+  var upperBound = newSeqWith(dimension, 100.0)
   echo "Best individual: ", bestInd
   echo "Best fitness: ", objectiveFunction(bestInd, fn, lowerBound, upperBound)
   echo bestValue
   echo bestInd
-  echo qmax
-
+  fn = 3
+  echo fn
+  bestInd = differentialEvolutionStrategy(dimension, fn, maxGenerations)
+  lowerBound = newSeqWith(dimension, -100.0)
+  upperBound = newSeqWith(dimension, 100.0)
+  echo "Best individual: ", bestInd
+  echo "Best fitness: ", objectiveFunction(bestInd, fn, lowerBound, upperBound)
+  echo bestValue
+  echo bestInd
   
   # let i = 1
   # let x = @[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
